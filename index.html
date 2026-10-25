@@ -1,0 +1,1314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nardos Bizuneh Portfolio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500&family=Outfit:wght@300..800&display=swap" media="print" onload="this.media='all'">
+<style>
+/* Layout: a fixed WebGL eye sits behind a tall scroll track (one snap stop per depth layer);
+   the name, mode switch, depth list and project caption float above it as HTML. */
+:root {
+  --bg: #0a0c0b;
+  --fg: #ffffff;
+  --muted: rgba(255, 255, 255, 0.72);
+  --line: rgba(242, 236, 228, 0.18);
+  --panel: rgba(10, 12, 11, 0.82);
+  --accent: #f2654a;            /* design engineer mode: coral */
+  --display: "Outfit", "Avenir Next", system-ui, sans-serif;
+  --body: "Instrument Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+:root[data-mode="art"] { --accent: #e9658e; }
+/* White text straight on the scene, no panels. While the design engineer eye is on screen the
+   background is pale paper, so the chrome switches to black there (JS toggles .on-paper). */
+.top, .depth, .blink { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.55); transition: color .4s; }
+:root.on-paper .top, :root.on-paper .depth, :root.on-paper .blink {
+  --fg: #151311; --muted: rgba(21, 19, 17, 0.72); --line: rgba(21, 19, 17, 0.45); --accent: #b8402a;
+  color: var(--fg); text-shadow: 0 0 6px #ece5d6, 0 0 14px #ece5d6;     /* a paper halo lifts the text off the engraving */
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--fg); }
+/* Paper under the canvas in design engineer mode, so a slow load or a dropped GPU context shows paper, not black. */
+html:not([data-mode="art"]), html:not([data-mode="art"]) body { background: #ece5d6; }
+html { scroll-snap-type: y proximity; }
+body { font-family: var(--body); font-size: 15px; }
+
+#gl { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; height: 100lvh; display: block; z-index: 0; }
+
+/* Focus: when a project is parked on, the edges darken and a soft spotlight stays in the middle */
+.spotlight {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .6s ease;
+  background: radial-gradient(ellipse 60% 62% at 50% 52%, rgba(255, 244, 228, .06) 0, rgba(8, 7, 6, .35) 45%, rgba(8, 7, 6, .88) 100%);
+}
+body.is-focused .spotlight { opacity: 1; }
+/* On the beige Design Engineering side the edges fade into the paper instead of into the dark */
+:root.on-paper .spotlight { background: radial-gradient(ellipse 60% 62% at 50% 52%, rgba(236, 229, 214, 0) 0, rgba(236, 229, 214, .3) 45%, rgba(236, 229, 214, .85) 100%); }
+.track { position: relative; z-index: 1; }
+.track section { height: 100vh; height: 100svh; scroll-snap-align: start; }
+
+/* ---------- chrome ---------- */
+.top {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 5;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding-top: calc(16px + env(safe-area-inset-top, 0px));
+  padding-bottom: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  pointer-events: none;
+}
+.top > * { pointer-events: auto; }
+.id { display: flex; flex-direction: column; gap: 8px; color: var(--fg); }
+
+.wordmark { font: 800 18px/1 var(--display); letter-spacing: 0.04em; text-transform: uppercase; }
+.discipline {
+  font: 500 11px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  display: flex; align-items: center; gap: 8px;
+}
+.discipline::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+
+.btn {
+  font: 500 11px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--fg); background: none; border: 1px solid var(--muted);
+  padding: 11px 14px; border-radius: 999px; cursor: pointer;
+  transition: border-color .2s, color .2s;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn:focus-visible, .depth button:focus-visible, .index button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* depth list on the right */
+.depth {
+  padding: 10px 0;
+  position: fixed; z-index: 4; top: 50%; transform: translateY(-50%);
+  right: max(16px, env(safe-area-inset-right, 0px));
+  list-style: none; margin: 0; display: flex; flex-direction: column; gap: 10px; align-items: flex-end;
+}
+.depth { transition: opacity .4s ease; }
+.depth.is-hidden { opacity: 0; pointer-events: none; }
+.depth button {
+  font: 400 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); background: none; border: 0; padding: 4px 0; cursor: pointer;
+  display: flex; align-items: center; gap: 10px;
+}
+.depth button::after { content: ""; width: 14px; height: 1px; background: currentColor; transition: width .25s; }
+.depth button[aria-current="true"] { color: var(--fg); }
+.depth button[aria-current="true"]::after { width: 34px; background: var(--accent); }
+
+/* project caption */
+.caption {
+  position: fixed; z-index: 4;
+  left: max(16px, env(safe-area-inset-left, 0px));
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  width: min(440px, calc(100vw - 32px));
+  padding: 18px 20px; display: flex; flex-direction: column; gap: 10px;
+  transition: opacity .35s ease, transform .35s ease, color .4s;
+}
+/* No panel: the text sits straight on the eye's background, ink on the beige paper, cream on black. */
+:root.on-paper .caption {
+  --fg: #151311; --muted: rgba(21, 19, 17, 0.78); --accent: #b8402a;
+  color: var(--fg); text-shadow: 0 0 6px #ece5d6, 0 0 14px #ece5d6;
+}
+:root:not(.on-paper) .caption { --fg: #f2ece4; --accent: #f2654a; color: var(--fg); text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6); }
+/* The name on the start eye: light Outfit that swaps to a random font on hover, and letters that lift
+   and warm toward the cursor (cobalt on the paper, coral on black). */
+.caption { --hot: #f2654a; }
+/* The "3 case studies" / "4 projects" line: dark purple on the paper, light purple on black. */
+.caption.is-home .kicker { color: #c9a8f0; }
+:root.on-paper .caption.is-home .kicker { color: #4a2a7a; text-shadow: none; }
+:root.on-paper .caption { --hot: #3366c6; }
+.caption h2.name {
+  font: 300 clamp(26px, 5vw, 44px)/0.92 "Outfit", "Avenir Next", system-ui, sans-serif; letter-spacing: -0.035em;
+  font-size: calc(clamp(26px, 5vw, 44px) * var(--fscale, 1)); height: calc(clamp(26px, 5vw, 44px) * 1.84);
+  white-space: nowrap; cursor: default;
+}
+.caption h2.name.swapped { position: relative; top: calc(var(--fy, 0.04) * 1em); }
+.caption h2.name.joined .ch { display: inline; transition: none; transform: none !important; }
+.caption h2.name.pop { animation: kpop .28s ease-out; }
+@keyframes kpop { from { transform: translateY(5px) scale(0.985); } to { transform: none; } }
+.caption h2.name .ch { display: inline-block; transition: transform .2s ease-out; color: color-mix(in srgb, var(--hot) calc(var(--p, 0) * 100%), var(--fg)); }
+@media (prefers-reduced-motion: reduce) { .caption h2.name .ch { transition: none; } }
+.caption.is-away { opacity: 0; transform: translateY(10px); pointer-events: none; }
+.kicker:empty { display: none; }
+.scroll-cue {
+  font: 500 11px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg); text-shadow: none;
+  display: inline-flex; align-items: center; gap: 10px; margin-top: 6px; padding: 9px 14px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.28);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+:root.on-paper .scroll-cue { background: rgba(255, 255, 255, 0.35); border-color: rgba(21, 19, 17, 0.18); }
+.scroll-cue::after { content: ""; width: 1px; height: 14px; background: currentColor; animation: cue 1.6s ease-in-out infinite; }
+@keyframes cue { 0%, 100% { transform: translateY(-3px); opacity: .4; } 50% { transform: translateY(3px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .scroll-cue::after { animation: none; } }
+.scroll-cue::after { background: var(--accent); }
+.blink .scroll-cue { margin-top: 0; }
+.contact { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 6px; }
+.contact a { font: 500 11px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--accent); }
+.contact a:hover { color: var(--accent); }
+.index .contact { margin: 0; padding: 4px 6px; }
+.contact a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.kicker { font: 500 11px/1.3 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.caption h2 { margin: 0; font: 800 clamp(26px, 5vw, 44px)/0.98 var(--display); text-wrap: balance; letter-spacing: -0.01em; }
+.caption p { margin: 0; color: var(--muted); line-height: 1.5; max-width: 52ch; }
+.caption .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tag { font: 400 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); border: 1px dashed var(--line); padding: 6px 8px; border-radius: 4px; }
+
+/* blink control */
+.blink {
+  position: fixed; z-index: 4;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+}
+.blink .btn {
+  /* frosted glass so the hint and the switch read over any background */
+  background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.28);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+.blink .btn { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; border-radius: 16px; text-align: left; }
+.btn-sub { display: flex; gap: 8px; align-items: center; font: 400 9.5px/1 var(--mono); letter-spacing: 0.1em; color: var(--muted); }
+.btn-sub .dots i { width: 7px; height: 7px; }
+.dots { display: flex; gap: 5px; }
+.dots i { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--muted); transition: background .15s, border-color .15s; }
+.dots i.on { background: var(--accent); border-color: var(--accent); }
+
+/* index panel */
+.index {
+  position: fixed; z-index: 6;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  width: min(340px, calc(100vw - 32px));
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  padding: 16px; display: grid; gap: 16px;
+}
+.index[hidden] { display: none; }
+.index h3 { margin: 0 0 6px; font: 500 11px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.index ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.index button {
+  width: 100%; text-align: left; background: none; border: 0; color: var(--fg); cursor: pointer;
+  font: 500 15px/1.2 var(--body); padding: 8px 6px; border-radius: 4px;
+  display: flex; justify-content: space-between; gap: 12px;
+}
+.index button span { font: 400 11px/1.2 var(--mono); color: var(--muted); }
+.index button:hover { background: rgba(242, 236, 228, 0.06); }
+
+.no-gl .depth, .no-gl .blink .btn-sub { display: none; }
+.no-gl body { background: radial-gradient(circle at 50% 45%, #2a1430, var(--bg) 60%); }
+
+/* ---------- project overview: phone mockup + dark card ---------- */
+.overview {
+  position: fixed; z-index: 4; inset: 0;
+  padding-top: calc(84px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; align-items: center; justify-content: center; gap: clamp(24px, 4vw, 56px);
+  pointer-events: none;
+  transition: opacity .4s ease, transform .4s ease;
+}
+.overview.is-away { opacity: 0; transform: scale(.96); }
+.overview:not(.is-away) .ov-card { pointer-events: auto; }
+.phone {
+  --ph: min(72vh, 660px);
+  position: relative; flex: none; height: var(--ph); aspect-ratio: 393 / 852; width: calc(var(--ph) * 393 / 852); max-width: 100%;
+  border-radius: calc(var(--ph) * .085); padding: calc(var(--ph) * .016);
+  background: #0b0a09; box-shadow: 0 0 0 1.5px #3a352e, 0 30px 70px rgba(0,0,0,.55);
+}
+/* The screen is pinned inside the frame rather than sized by percentages, which Safari on iPhone can resolve to nothing */
+.phone-screen { position: absolute; inset: calc(var(--ph) * .016); border-radius: calc(var(--ph) * .07); overflow: hidden; background: #16151c; -webkit-mask-image: -webkit-radial-gradient(white, black); }
+.phone-screen img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: top; display: block; }
+.phone-island { position: absolute; top: calc(var(--ph) * .03); left: 50%; transform: translateX(-50%); width: 30%; height: calc(var(--ph) * .036); border-radius: 999px; background: #0b0a09; }
+.ov-card {
+  /* dark card, the same in both modes */
+  --c-fg: #ece5d6; --c-muted: #a8a093; --c-line: rgba(236,229,214,.16); --c-accent: #e8a3c4;
+  width: min(420px, 100%); max-height: 100%; overflow: auto; min-width: 0;
+  background: rgba(15, 14, 12, 0.9); color: var(--c-fg); border: 1px solid var(--c-line); border-radius: 8px;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  padding: 22px 24px; display: flex; flex-direction: column; gap: 13px;
+}
+.ov-kicker, .ov-label, .ov-meta dt { font: 500 10.5px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--c-accent); }
+.ov-card h2 { margin: 0; font: 800 clamp(30px, 4vw, 44px)/1 var(--display); }
+.ov-body { margin: 0; font-size: 14px; line-height: 1.55; color: var(--c-muted); }
+.ov-lede { margin: 0; font-size: 15px; line-height: 1.5; color: var(--c-fg); }
+.ov-meta { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; padding-block: 12px; border-top: 1px solid var(--c-line); border-bottom: 1px solid var(--c-line); }
+.ov-meta dt { color: var(--c-muted); }
+.ov-meta dd { margin: 4px 0 0; font-size: 14px; }
+.ov-points { display: grid; gap: 12px; }
+.ov-points section { display: grid; gap: 4px; }
+.ov-points h3 { margin: 0; font: 500 16px/1.3 var(--body); }
+.ov-points p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--c-muted); }
+.ov-status { display: flex; align-items: center; gap: 10px; margin: -4px 0 0; font: 500 10.5px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--c-fg); }
+.ov-status::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--c-accent); box-shadow: 0 0 0 3px rgba(232,163,196,.2); }
+.ov-more {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 10px;
+  font: 500 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; text-decoration: none;
+  color: var(--c-accent); background: none; border: 1px solid var(--c-accent); padding: 11px 15px; border-radius: 999px; flex: none;
+  transition: transform .2s, background .2s;
+}
+.ov-more:hover { background: var(--c-accent); color: #151311; }
+.ov-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.ov-more.is-solid { background: var(--c-accent); color: #151311; }
+.ov-more.is-solid:hover { background: none; color: var(--c-accent); }
+.ov-more:focus-visible { outline: 2px solid var(--c-fg); outline-offset: 3px; }
+
+/* ---------- Funk Fusion: three variant covers fanned like printed magazines ---------- */
+.mags { --mh: min(48vh, 440px); position: relative; flex: none; height: var(--mh); width: calc(var(--mh) * .77 * 1.6); }
+.mag {
+  position: absolute; top: 0; left: 50%; height: var(--mh); aspect-ratio: 353 / 459;
+  padding: 0; border: 0; background: none; cursor: pointer; border-radius: 2px 4px 4px 2px;
+  transform-origin: 50% 100%;
+  transition: transform .5s cubic-bezier(.2,.8,.2,1), filter .5s, z-index 0s .2s;
+  /* page edges peeking out on the right and bottom, then a soft drop shadow */
+  box-shadow: 2px 2px 0 #e9e4da, 4px 3px 0 #cfc8bb, 5px 4px 0 #e9e4da, 7px 6px 0 #bdb5a7,
+              18px 28px 40px rgba(0,0,0,.55);
+}
+.mag img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+/* spine fold and gloss */
+.mag::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(0,0,0,.45) 0, rgba(0,0,0,.1) 2.2%, rgba(255,255,255,.28) 3%, rgba(255,255,255,0) 6%),
+    linear-gradient(125deg, rgba(255,255,255,.16) 0, rgba(255,255,255,0) 38%, rgba(255,255,255,0) 70%, rgba(255,255,255,.07) 100%);
+}
+.mag[data-pos="0"] { z-index: 3; transform: translateX(-50%) rotate(0deg); }
+.mag[data-pos="1"] { z-index: 2; transform: translateX(-22%) translateY(-2%) rotate(8deg); filter: brightness(.82); }
+.mag[data-pos="2"] { z-index: 1; transform: translateX(-78%) translateY(-1%) rotate(-7deg); filter: brightness(.7); }
+.mag:not([data-pos="0"]):hover { filter: none; }
+.mag:focus-visible { outline: 2px solid #e8a3c4; outline-offset: 4px; }
+.mags-hint { position: absolute; left: 50%; bottom: -46px; transform: translateX(-50%); white-space: nowrap; font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--fg); background: var(--panel); padding: 8px 12px; border-radius: 4px; }
+.overview:not(.is-away) .mag { pointer-events: auto; }
+
+/* ---------- Tarot Deck: the cards dealt in a shallow arc, with a wide info card under them ---------- */
+.overview[data-project="tarot"] { flex-direction: column; gap: 40px; }
+.deck { --ch: min(36vh, 300px); display: flex; justify-content: center; padding-top: 18px; }
+.deck img {
+  flex: none; height: var(--ch); width: auto; aspect-ratio: 305 / 469;
+  margin-left: calc(var(--ch) * -.2);                     /* each card overlaps the last by about a third */
+  transform: translateY(calc(var(--d) * var(--d) * 5px)) rotate(calc(var(--d) * 4deg));
+  filter: drop-shadow(0 14px 18px rgba(0,0,0,.55));
+  transition: transform .35s cubic-bezier(.2,.8,.2,1);
+}
+.deck img:first-child { margin-left: 0; }
+.deck img:hover { transform: translateY(calc(var(--d) * var(--d) * 5px - 22px)) rotate(calc(var(--d) * 4deg)) scale(1.04); z-index: 9; }
+.overview:not(.is-away) .deck img { pointer-events: auto; }
+.tarot-info { width: min(900px, 100%); display: grid; grid-template-columns: 1fr 1.25fr; gap: 6px 36px; align-items: start; }
+.tarot-info h2 { grid-column: 1; }
+.tarot-info .ov-meta { grid-column: 2; grid-row: 1 / span 3; border-top: 0; padding-top: 4px; }
+
+/* ---------- KinetikIQ: app on a phone in front of two posters, with a wider card ---------- */
+.kiq-media { --ph: min(50vh, 430px); position: relative; flex: none; height: calc(var(--ph) * 1.02); width: calc(var(--ph) * 1.02); }
+.kiq-media .phone { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 3; }
+.kiq-media .phone-screen { background: #f7f7f8; }
+.poster {
+  position: absolute; top: 0; height: calc(var(--ph) * .78); width: auto; border-radius: 3px; display: block;
+  box-shadow: 0 18px 40px rgba(0,0,0,.5);
+}
+.poster.p1 { left: 0; transform: rotate(-7deg); z-index: 1; }
+.poster.p2 { right: 0; top: 4%; transform: rotate(6deg); z-index: 2; }
+.ov-card.kiq-card { width: min(450px, 100%); }
+.overview[data-project="digitalart"] .photo-panel { width: min(1040px, 100%, calc((100vh - 200px) * 1.3)); }
+
+/* ---------- Accessify: text only, so one wide two-column card ---------- */
+.ov-card.acc-card { width: min(860px, 100%); display: grid; grid-template-columns: 1fr 1fr; gap: 16px 36px; align-items: start; }
+.acc-card .acc-head { grid-column: 1 / -1; display: grid; gap: 10px; }
+.acc-card .ov-points { gap: 14px; }
+.acc-card .ov-meta { grid-template-columns: 1fr; }
+.acc-card .ov-meta { grid-column: 1 / -1; }
+.acc-card .ov-actions { grid-column: 1 / -1; }
+
+/* Design Engineering cards: cream paper with black ink and a hairline border, like a printed sheet.
+   Each project keeps its colour as an ink accent (labels, rules, buttons). */
+.overview[class*="tint-"] .ov-card {
+  --c-fg: #151311; --c-muted: #4d463e; --c-line: rgba(21, 19, 17, 0.16); --c-ink: 21, 19, 17;
+  background: #f4efe4; border: 1px solid rgba(21, 19, 17, 0.6); border-radius: 3px;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 1px 0 rgba(21, 19, 17, 0.08), 0 22px 50px rgba(21, 19, 17, 0.2);
+}
+.tint-purple .ov-card { --c-accent: #5b2d9e; }
+.tint-blue .ov-card   { --c-accent: #2547a0; }
+.tint-teal .ov-card   { --c-accent: #0f6b68; }
+
+/* ---------- Slideshows (KinetikIQ, Accessify): one slide at a time, arrows and dots underneath ---------- */
+.overview.has-slides { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+.slides { position: relative; width: 100%; height: 100%; min-height: 0; display: flex; }
+.slide { display: none; width: 100%; height: 100%; min-height: 0; align-items: center; justify-content: center; gap: clamp(24px, 4vw, 56px); }
+.slide.is-active { display: flex; animation: slideIn .45s cubic-bezier(.2,.8,.2,1); }
+@keyframes slideIn { from { transform: translateX(18px); } to { transform: none; } }
+.ov-card.slide-panel { width: auto; max-width: min(1100px, 100%); margin: 0; }
+.slide-panel figcaption { display: grid; gap: 4px; }
+.slide-panel h3 { margin: 0; font: 800 clamp(20px, 2.4vw, 28px)/1.1 var(--display); }
+.slide-panel figcaption p, .slide-text p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--c-muted); }
+.slide-media { display: flex; gap: 12px; justify-content: center; min-height: 0; }
+.slide-media img { display: block; max-width: 100%; max-height: calc(100vh - 300px); width: auto; height: auto; border-radius: 6px; background: #fff; }
+.slide-panel.is-pair .slide-media img { max-width: calc(50% - 6px); }
+.slide-text { width: min(760px, 100%) !important; gap: 16px; }
+.slide-text blockquote { margin: 0; padding: 4px 0 4px 18px; border-left: 2px solid var(--c-accent); font-size: 17px; line-height: 1.5; font-style: italic; color: var(--c-fg); }
+.slide-text cite { display: block; margin-top: 10px; font: 500 10.5px/1.2 var(--mono); font-style: normal; letter-spacing: .12em; text-transform: uppercase; color: var(--c-accent); }
+.kiq-ba { display: grid; grid-template-columns: auto minmax(220px, 300px); gap: clamp(20px, 3vw, 40px); align-items: center; max-width: min(1000px, 100%); }
+.ba-media { display: flex; gap: 12px; min-height: 0; }
+.ba-media figure { margin: 0; display: grid; gap: 8px; justify-items: center; }
+.ba-media img { display: block; max-height: calc(100vh - 330px); max-width: 100%; width: auto; border-radius: 8px; }
+.kiq-ba.is-square .ba-media img { max-height: min(calc(100vh - 330px), 340px); }
+.ba-media figcaption, .kiq-head .ov-label { font: 500 10.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--c-muted); }
+.ba-text { display: grid; gap: 8px; }
+.ba-text h3, .kiq-head h3 { margin: 0; font: 800 clamp(20px, 2.4vw, 28px)/1.1 var(--display); }
+.ba-text p, .kiq-head p, .kiq-cols p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--c-muted); }
+.kiq-story .lead { margin: 0; font-size: 17px; line-height: 1.5; color: var(--c-fg); }
+.kiq-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.kiq-cols > div { display: grid; gap: 6px; align-content: start; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.18); }
+.kiq-cols h4 { margin: 0; font: 700 17px/1.2 var(--display); }
+.ov-card.kiq-wide { width: min(1000px, 100%); max-width: 100%; display: grid; gap: 18px; }
+.kiq-head { display: flex; justify-content: space-between; align-items: end; gap: 24px; }
+.kiq-head > div { display: grid; gap: 6px; }
+.kiq-head p { max-width: 380px; }
+.kiq-banners { display: flex; gap: 10px; align-items: flex-start; }
+.kiq-banners img { flex: 1 1 0; min-width: 0; height: auto; max-height: calc(100vh - 340px); object-fit: contain; border-radius: 6px; }
+.kiq-banners img:last-child { flex-grow: 1.4; }
+.kiq-carousels { display: grid; gap: 12px; }
+.kiq-carousels img { display: block; width: 100%; height: auto; border-radius: 6px; }
+.slide-nav {
+  position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 999px; pointer-events: auto;
+  background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.24);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3);
+}
+.overview.is-away .slide-nav { pointer-events: none; }
+.slide-nav button { width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); background: none; color: #fff; font-size: 16px; cursor: pointer; }
+.slide-nav button:hover { background: rgba(255,255,255,.16); }
+.slide-nav button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.slide-dots { display: flex; gap: 6px; }
+.slide-dots button { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: rgba(255,255,255,.35); }
+.slide-dots button[aria-current="true"] { background: #fff; width: 20px; border-radius: 4px; }
+.slide-count { font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.85); min-width: 9ch; text-align: center; }
+
+/* ---------- photography: a justified grid, every photo uncropped ---------- */
+.photo-panel {
+  --c-fg: #ece5d6; --c-muted: #a8a093; --c-line: rgba(236,229,214,.16); --c-accent: #e9658e;
+  width: min(1040px, 100%); max-height: 100%; overflow: auto; min-width: 0;
+  background: rgba(15, 14, 12, 0.9); color: var(--c-fg); border: 1px solid var(--c-line); border-radius: 8px;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  padding: 20px 22px 22px; display: flex; flex-direction: column; gap: 14px;
+}
+.overview:not(.is-away) .photo-panel { pointer-events: auto; }
+.photo-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
+.photo-head h2 { margin: 0; font: 800 clamp(26px, 3vw, 36px)/1 var(--display); }
+.photo-head p { margin: 0; font-size: 14px; color: var(--c-muted); }
+.photo-head .ov-kicker { flex-basis: 100%; }
+/* Two rows of five and six photos (balanced by aspect ratio). Each tile grows by its own
+   aspect ratio, so a row lines up at one height and no photo is cropped. */
+.photo-site { display: block; border-radius: 2px; overflow: hidden; border: 1px solid var(--c-line); transition: border-color .2s; }
+.photo-site:hover { border-color: var(--c-accent); }
+.photo-site img { display: block; width: 100%; height: auto; max-height: calc(100vh - 330px); object-fit: cover; object-position: top center; }
+.photo-panel .ov-actions { justify-content: flex-start; }
+.photo-grid { display: flex; flex-direction: column; gap: 8px; }
+.photo-row { display: flex; gap: 8px; }
+.photo-row > div { flex: var(--a) 1 0; min-width: 0; }
+.photo-grid img { display: block; width: 100%; height: auto; aspect-ratio: var(--a); object-fit: cover; border-radius: 3px; background: #222; }
+
+/* keep overviews clear of the depth list on wider screens */
+@media (min-width: 761px) { .overview { padding-left: 185px; padding-right: 185px; } }
+/* Table of contents down the left of a deck, and the shared expanded media page */
+.slide-toc { position: absolute; left: max(24px, env(safe-area-inset-left, 0px)); top: 50%; transform: translateY(-50%); z-index: 2;
+  list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; pointer-events: auto; width: 150px; }
+.overview.is-away .slide-toc { pointer-events: none; }
+.slide-toc button { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; background: none; border: 0; padding: 6px 0; cursor: pointer;
+  font: 500 10.5px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+.slide-toc button::before { content: ""; flex: none; width: 14px; height: 1px; background: currentColor; transition: width .2s; }
+.slide-toc button:hover, .slide-toc button[aria-current="true"] { color: #fff; }
+.slide-toc button[aria-current="true"]::before { width: 26px; height: 2px; background: var(--c-accent); }
+.slide-toc button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* on the card: a row of page tabs above the content */
+.slide-toc.on-card { position: static; transform: none; width: auto; grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 2px 18px;
+  margin: -6px 0 2px; padding: 0 0 10px; border-bottom: 1px solid rgba(255,255,255,.14); }
+.slide-toc.on-card button { width: auto; padding: 5px 0; gap: 7px; white-space: nowrap; }
+.slide-toc.on-card button::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .5; }
+.slide-toc.on-card button[aria-current="true"]::before { width: 6px; height: 6px; opacity: 1; background: var(--c-accent); }
+.slide-toc.on-card button[aria-current="true"] { color: var(--c-accent); }
+.slide-nav.on-card { width: fit-content; }
+.x-media { display: flex; gap: 16px; justify-content: center; min-height: 0; }
+.x-media img { display: block; max-width: 100%; min-width: 0; max-height: calc(100vh - 300px); width: auto; height: auto; border-radius: 6px; background: #fff; }
+.x-media img + img, .x-media img:has(+ img) { max-width: calc(50% - 8px); }
+.ov-card.kiq-x.acc-pr { display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px 44px; align-items: start; }
+.acc-pr .slide-nav { grid-column: 1 / -1; }
+.acc-ps { display: grid; gap: 20px; }
+.acc-ps section, .acc-research { display: grid; gap: 8px; align-content: start; }
+.acc-pr h3 { margin: 0; font: 700 18px/1.2 var(--display); }
+.acc-research blockquote { margin: 4px 0; padding: 4px 0 4px 18px; border-left: 2px solid var(--c-accent); font-size: 16px; line-height: 1.5; font-style: italic; color: var(--c-fg); }
+.acc-research cite { display: block; margin-top: 10px; font: 500 10.5px/1.2 var(--mono); font-style: normal; letter-spacing: .12em; text-transform: uppercase; color: var(--c-accent); }
+@media (max-width: 760px) {
+  .slide-toc.on-card { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .overview[data-toc].is-expanded { padding-left: max(16px, env(safe-area-inset-left, 0px)); }
+  .acc-pr { grid-template-columns: 1fr; }
+  .x-media { flex-direction: column; }
+  .x-media img, .x-media img + img, .x-media img:has(+ img) { max-width: 100%; max-height: none; }
+}
+/* Case-study reading: the intro shows only "Read case study"; the page menu, arrows and back button
+   appear once it's open, and the page itself holds still so scrolling turns the pages. */
+html.reading-lock, html.reading-lock body { overflow: hidden; }
+.overview.has-slides:not(.is-reading) .slide-nav { display: none; }
+.card-head { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px 22px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.14); }
+.card-head .slide-toc.on-card { flex: 1 1 0; min-width: 0; padding: 0; margin: 0; border: 0; }
+.card-back { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px 7px 11px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.06); color: #fff; cursor: pointer;
+  font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.card-back:hover { background: var(--c-accent); border-color: var(--c-accent); color: #151311; }
+.card-back:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.slide-nav button:disabled { opacity: .3; cursor: default; }
+.slide-nav button:disabled:hover { background: none; }
+.read-case { cursor: pointer; }
+/* ---------- Trace deck ---------- */
+.ov-card.kiq-x.tr-concept { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 44px; align-items: start; }
+.tr-concept .tr-stats, .tr-concept .slide-nav { grid-column: 1 / -1; }
+.tr-col { display: grid; gap: 12px; }
+.tr-col .lead { font: 400 22px/1.35 var(--display); color: var(--c-fg); }
+.tr-note { padding-left: 14px; border-left: 2px solid var(--c-accent); }
+/* Trace build pages */
+.tr-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; counter-reset: st; }
+.tr-steps li { counter-increment: st; display: grid; gap: 6px; align-content: start; }
+.tr-steps li::before { content: counter(st, decimal-leading-zero); font: 500 10.5px/1 var(--mono); letter-spacing: .12em; color: var(--c-accent); }
+.tr-steps b { font: 700 16px/1.25 var(--display); color: var(--c-fg); }
+.tr-steps span, .tr-features p, .tr-next li { font-size: 13.5px; line-height: 1.55; color: var(--c-muted); }
+.tr-meta { margin: 0; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.14); font-size: 13px; color: var(--c-muted); }
+.tr-meta b { font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--c-accent); margin-right: 4px; }
+.tr-features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px 28px; }
+.tr-features section { display: grid; gap: 6px; align-content: start; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.14); }
+.tr-features h4 { margin: 0; }
+.ov-card.kiq-x.tr-ai { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 48px; align-items: start; }
+.tr-ai .slide-toc, .tr-ai .slide-nav { grid-column: 1 / -1; }
+.tr-ai .tr-col p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--c-muted); }
+.tr-ai .tr-col .lead { font: 400 21px/1.35 var(--display); color: var(--c-fg); }
+.tr-next { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+@media (max-width: 760px) { .tr-steps, .tr-features, .ov-card.kiq-x.tr-ai { grid-template-columns: 1fr; } }
+.tr-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.tr-stats div { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.2); }
+.tr-stats b { font: 400 34px/1 var(--display); color: #b9b2ff; }
+.tr-stats span { font-size: 13px; line-height: 1.5; color: var(--c-muted); }
+.tr-personas img { max-height: calc(100vh - 470px); min-height: 160px; background: none; }
+.tr-chart img { max-height: calc(100vh - 290px); border-radius: 8px; }
+/* Trace intro: a wider card with the three points side by side, so the arrows fit on it */
+.overview[data-project="trace"] .slide:first-child .ov-points { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+@media (max-width: 760px) { .overview[data-project="trace"] .slide:first-child .ov-points { grid-template-columns: 1fr; } }
+.tr-strip { display: flex; gap: 12px; justify-content: center; align-items: flex-end; }
+.tr-strip img { display: block; flex: 0 1 auto; min-width: 0; width: auto; height: calc(100vh - 330px); max-height: 560px; min-height: 200px; object-fit: contain; border-radius: 8px; }
+@media (max-width: 760px) {
+  .ov-card.kiq-x.tr-concept, .tr-stats { grid-template-columns: 1fr; }
+  .tr-strip { overflow-x: auto; justify-content: flex-start; }
+  .tr-strip img { flex: none; height: 46vh; }
+}
+/* ---------- KinetikIQ expanded pages: big panels, depth list hidden, slide nav sits on the card ---------- */
+.overview.is-expanded { padding-left: max(32px, env(safe-area-inset-left, 0px)); padding-right: max(32px, env(safe-area-inset-right, 0px)); }
+body:has(.overview.is-expanded:not(.is-away)) .depth { opacity: 0; pointer-events: none; }
+.slide-nav.on-card { position: static; transform: none; align-self: center; margin: 4px auto 0; background: rgba(255, 255, 255, 0.08); }
+.ov-card.kiq-x { width: min(1240px, 100%); max-height: calc(100vh - 120px); overflow: auto; display: flex; flex-direction: column; gap: 18px; padding: 26px 30px 16px; }
+.kiq-x h4 { margin: 0 0 6px; font: 700 18px/1.2 var(--display); }
+.kiq-x p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--c-muted); }
+.ov-card.kiq-x.kiq-or { display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px 48px; align-items: center; }
+.kiq-or .slide-nav { grid-column: 1 / -1; }
+.kiq-or-main, .kiq-or-quote { display: grid; gap: 16px; align-content: start; }
+.kiq-or .lead { font-size: 18px; line-height: 1.5; color: var(--c-fg); }
+.kiq-or blockquote { margin: 0; padding: 4px 0 4px 20px; border-left: 2px solid var(--c-accent); font-size: 17px; line-height: 1.55; font-style: italic; color: var(--c-fg); }
+.kiq-or cite { display: block; margin-top: 12px; font: 500 10.5px/1.3 var(--mono); font-style: normal; letter-spacing: .12em; text-transform: uppercase; color: var(--c-accent); }
+.kiq-works { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; min-height: 0; }
+.kiq-work { display: grid; gap: 14px; align-content: start; }
+.kiq-work .ba-media { justify-content: center; }
+.kiq-work .ba-media img { max-height: calc(100vh - 470px); min-height: 180px; }
+.kiq-x .kiq-banners { justify-content: center; gap: 16px; }
+.kiq-x .kiq-banners img { flex: 0 1 auto; width: auto; height: calc(100vh - 330px); max-height: 640px; min-height: 260px; border-radius: 8px; }
+.kiq-social { display: grid; grid-template-columns: auto 1fr; gap: 28px; align-items: start; }
+.kiq-social figure { margin: 0; display: grid; gap: 8px; }
+.kiq-social figcaption { font: 500 10.5px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--c-muted); }
+.kiq-webinar img { display: block; height: calc(100vh - 340px); max-height: 520px; min-height: 240px; width: auto; border-radius: 8px; }
+.kiq-cars { display: grid; gap: 18px; }
+.kiq-tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.kiq-tiles img { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 5px; }
+/* three rows on the social page: tiles sized by height so the page fits one screen */
+.ov-card.kiq-x .kiq-cars { gap: 12px; --th: clamp(84px, calc((min(100vh - 120px, 800px) - 256px) / 3), 200px); }
+.ov-card.kiq-x .kiq-cars .kiq-tiles { display: flex; gap: 8px; }
+.ov-card.kiq-x .kiq-cars .kiq-tiles img { width: auto; height: var(--th); flex: 0 1 auto; min-width: 0; object-fit: cover; }
+.ov-card.kiq-x .kiq-events img { aspect-ratio: auto; object-fit: contain; }
+.kiq-social:has(.kiq-events) .kiq-webinar img { height: calc(clamp(84px, calc((min(100vh - 120px, 800px) - 256px) / 3), 200px) * 3 + 96px); max-height: none; min-height: 0; max-width: 34vw; object-fit: cover; }
+/* Accessify mockups: six screens per page, each in a phone frame */
+.acc-phones { --ph: max(240px, min(400px, calc(100vh - 400px), calc((min(1240px, 100vw - 64px) - 260px) / 6 / 0.462))); display: flex; gap: 32px; justify-content: center; align-items: flex-start; }
+.acc-phones figure { margin: 0; display: grid; gap: 10px; justify-items: center; }
+.acc-phones .phone { --ph: inherit; box-shadow: 0 0 0 1.5px #3a352e, 0 18px 40px rgba(0,0,0,.45); }
+.acc-phones .phone-screen { background: #fff; }
+.acc-phones figcaption { font: 500 10.5px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--c-muted); text-align: center; }
+@media (max-width: 760px) { .acc-phones { --ph: 46vh; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; } .acc-phones figure { flex: none; } }
+/* concept page: seven phone screens in a row */
+.kiq-next { display: flex; gap: 28px; align-items: start; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x proximity; scrollbar-width: thin; }
+.kiq-next figure { flex: none; scroll-snap-align: start; }
+.kiq-next figure { margin: 0; display: grid; gap: 8px; justify-items: center; }
+.kiq-next img { display: block; height: min(calc(100vh - 420px), 440px); width: auto; border-radius: 14px; }
+.kiq-next figcaption { font: 500 10.5px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--c-muted); text-align: center; }
+@media (max-width: 760px) { .kiq-next img { height: 50vh; } }
+/* banners and the two posters share one row */
+.kiq-x .kiq-banners { gap: 28px; }
+.kiq-media { margin-top: 70px; }
+/* KinetikIQ and Trace: every page is the same box; the intro carries its mockups layered over the right side */
+.overview[data-uniform] .ov-card.kiq-x { height: min(calc(100vh - 120px), 800px); max-height: none; }
+.overview[data-uniform] .ov-card.kiq-x > .slide-nav { margin-top: auto; }
+.overview[data-uniform] .ov-card.kiq-x.kiq-or, .overview[data-uniform] .ov-card.kiq-x.tr-concept, .overview[data-uniform] .ov-card.kiq-x.tr-ai { grid-template-rows: auto 1fr auto; }
+.ov-card.kiq-x.hero { position: relative; overflow: visible; gap: 14px; }
+.hero > :not(.slide-toc):not(.card-head):not(.slide-nav):not(.hero-media):not(.kiq-media) { max-width: 54%; }
+.hero .kiq-media, .hero .hero-media { position: absolute; right: 5%; top: 50%; transform: translateY(-46%); z-index: 3; margin: 0; }
+.hero .hero-media .phone { --ph: min(58vh, 500px); }
+/* An explicit width on the floating phones: Safari collapses an absolutely placed box whose only width comes from aspect-ratio */
+.hero .hero-media .phone, .hero .kiq-media .phone { max-width: none; }
+.hero .hero-media { width: max-content; }
+.hero .kiq-media .phone { --ph: min(54vh, 460px); }
+.hero .kiq-media { transform: translateY(-40%); }
+.overview[data-project="trace"] .hero .ov-points { grid-template-columns: 1fr; gap: 12px; }
+.overview[data-project="kinetikiq"] .hero .ov-lede { font-size: 17px; }
+/* Trace and KinetikIQ intros: a smaller card so the project index stays visible on the right */
+@media (min-width: 761px) {
+  .overview[data-project="kinetikiq"][data-uniform] .ov-card.kiq-x.hero { width: min(960px, 100%); height: auto; max-height: min(calc(100vh - 160px), 640px); padding: 22px 26px 18px; gap: 10px; }
+  .overview[data-project="kinetikiq"] .hero .kiq-media, .overview[data-project="kinetikiq"] .hero .kiq-media .phone { --ph: min(44vh, 380px); }
+  .overview[data-project="kinetikiq"] .hero .ov-body { font-size: 13.5px; }
+  .overview[data-project="trace"][data-uniform] .ov-card.kiq-x.hero { width: min(960px, 100%); height: auto; max-height: min(calc(100vh - 160px), 640px); padding: 22px 26px 14px; gap: 10px; }
+  .overview[data-project="trace"] .hero .hero-media .phone { --ph: min(48vh, 400px); }
+  .overview[data-project="trace"] .hero .ov-lede { font-size: 17px; }
+  .overview[data-project="trace"] .hero .ov-points p { font-size: 13px; line-height: 1.5; }
+}
+/* password gate */
+.lock { display: none; position: absolute; inset: 0; z-index: 6; align-items: center; justify-content: center; padding: 16px; }
+.overview.is-locked .lock { display: flex; }
+.overview.is-locked:not(.is-away) .lock-card { pointer-events: auto; }
+.overview.is-locked .slides { visibility: hidden; }
+.ov-card.lock-card { width: min(440px, 100%); gap: 14px; }
+.lock-row { display: flex; gap: 10px; }
+.lock-row input { flex: 1; min-width: 0; font: 15px var(--body); color: var(--c-fg); background: rgba(255,255,255,.06); border: 1px solid var(--c-line); border-radius: 999px; padding: 10px 16px; }
+.lock-row input:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.lock-err { margin: 0; font-size: 13px; color: #ffb4a8; }
+@media (max-width: 760px) {
+  .kiq-or, .kiq-works, .kiq-social { grid-template-columns: 1fr; }
+  .ov-card.kiq-x { max-height: none; }
+  .kiq-work .ba-media img, .kiq-webinar img { max-height: 46vh; height: auto; min-height: 0; }
+  .kiq-x .kiq-banners { overflow-x: auto; justify-content: flex-start; }
+  .kiq-x .kiq-banners img { height: 50vh; flex: none; }
+  .kiq-tiles { grid-template-columns: repeat(3, 1fr); }
+  .ov-card.kiq-x .kiq-cars .kiq-tiles { flex-wrap: wrap; }
+  .kiq-media { margin-top: 0; }
+  .overview[data-uniform] .ov-card.kiq-x { height: auto; }
+  .hero > * { max-width: none !important; }
+  .hero .kiq-media, .hero .hero-media { position: relative; right: auto; top: auto; transform: none; align-self: center; order: -1; }
+}
+
+
+@media (max-width: 760px) {
+  .overview { flex-direction: column; justify-content: flex-start; gap: 16px; padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px)); }
+  .phone { --ph: 34vh; }
+  .slide { flex-direction: column; justify-content: flex-start; gap: 16px; }
+  .overview.has-slides { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+  .slide-nav { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+  .slide-media { flex-direction: column; }
+  .slide-media img, .slide-panel.is-pair .slide-media img { max-width: 100%; max-height: none; }
+  .slide-count { display: none; }
+  .kiq-ba { grid-template-columns: 1fr; }
+  .ba-media img { max-height: 46vh; }
+  .kiq-cols { grid-template-columns: 1fr; }
+  .kiq-head { flex-direction: column; align-items: start; }
+  .kiq-banners { overflow-x: auto; }
+  .kiq-banners img { flex: none; height: 46vh; width: auto; max-height: none; }
+  .ov-card { flex: 1; padding: 18px; }
+  .photo-panel { padding: 16px; width: 100%; }
+  .mags { --mh: 24vh; margin: 30px 0 34px; }
+  .kiq-media { --ph: 30vh; }
+  .ov-card.acc-card { display: flex; }
+  .deck { --ch: 20vh; }
+  .deck img { margin-left: calc(var(--ch) * -.42); }
+  .tarot-info { display: flex; flex: none; }
+  .mags-hint { bottom: -38px; }
+  /* phone: let the tiles wrap freely, about 110px tall */
+  .photo-grid { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .photo-grid::after { content: ""; flex-grow: 999; }
+  .photo-row { display: contents; }
+  .photo-row > div { flex: var(--a) 1 calc(var(--a) * 110px); }
+  .depth { display: none; }
+  .caption { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .blink { left: max(16px, env(safe-area-inset-left, 0px)); flex-direction: row; justify-content: space-between; align-items: center; }
+}
+/* ---------- Paper cards: ink versions of the controls and rules that were white on the dark cards ---------- */
+.overview[class*="tint-"] .ov-more:hover, .overview[class*="tint-"] .ov-more.is-solid { color: #f4efe4; }
+.overview[class*="tint-"] .ov-more.is-solid:hover { color: var(--c-accent); }
+.overview[class*="tint-"] .ov-status::before { box-shadow: 0 0 0 3px rgba(var(--c-ink), .08); }
+.overview[class*="tint-"] .kiq-cols > div, .overview[class*="tint-"] .tr-meta, .overview[class*="tint-"] .tr-features section,
+.overview[class*="tint-"] .tr-stats div { border-top-color: rgba(var(--c-ink), .18); }
+.overview[class*="tint-"] .tr-stats b { color: var(--c-accent); }
+.overview[class*="tint-"] .slide-toc.on-card, .overview[class*="tint-"] .card-head { border-bottom-color: rgba(var(--c-ink), .16); }
+.overview[class*="tint-"] .slide-toc button { color: rgba(var(--c-ink), .55); }
+.overview[class*="tint-"] .slide-toc button:hover { color: var(--c-fg); }
+.overview[class*="tint-"] .slide-toc button[aria-current="true"] { color: var(--c-accent); }
+.overview[class*="tint-"] .slide-toc button:focus-visible, .overview[class*="tint-"] .slide-nav button:focus-visible,
+.overview[class*="tint-"] .card-back:focus-visible { outline-color: var(--c-fg); }
+.overview[class*="tint-"] .card-back { color: var(--c-fg); border-color: rgba(var(--c-ink), .4); background: none; }
+.overview[class*="tint-"] .card-back:hover { color: #f4efe4; background: var(--c-accent); border-color: var(--c-accent); }
+.overview[class*="tint-"] .slide-nav.on-card { background: rgba(var(--c-ink), .05); border-color: rgba(var(--c-ink), .14); }
+.overview[class*="tint-"] .slide-nav button { color: var(--c-fg); border-color: rgba(var(--c-ink), .35); }
+.overview[class*="tint-"] .slide-nav button:hover { background: rgba(var(--c-ink), .08); }
+.overview[class*="tint-"] .slide-dots button { background: rgba(var(--c-ink), .25); }
+.overview[class*="tint-"] .slide-dots button[aria-current="true"] { background: var(--c-accent); }
+.overview[class*="tint-"] .slide-count { color: rgba(var(--c-ink), .75); }
+.overview[class*="tint-"] .lock-row input { background: #fbf8f1; }
+.overview[class*="tint-"] .lock-err { color: #b3261e; }
+.overview[class*="tint-"] .acc-research blockquote { color: var(--c-fg); }
+/* ---------- Art Direction cards: solid black ink with a coral hairline, like the coral rim around the eye ---------- */
+.overview:not([class*="tint-"]) .ov-card, .photo-panel {
+  --c-fg: #f2ece4; --c-muted: #b3aa9d; --c-line: rgba(242, 101, 74, 0.28); --c-accent: #f2654a;
+  background: #0d0c0b; border: 1px solid rgba(242, 101, 74, 0.75); border-radius: 3px;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.5);
+}
+.overview:not([class*="tint-"]) .ov-more.is-solid, .overview:not([class*="tint-"]) .ov-more:hover { color: #0d0c0b; }
+.overview:not([class*="tint-"]) .ov-status::before { box-shadow: 0 0 0 3px rgba(242, 101, 74, .2); }
+.mags-hint { background: #0d0c0b; border: 1px solid rgba(242, 101, 74, 0.75); border-radius: 3px; }
+/* Lightbox for case-study images */
+.overview[class*="tint-"] .ov-card img { cursor: zoom-in; }
+.lightbox { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 28px; overflow: auto; background: rgba(21, 19, 17, 0.9); cursor: zoom-out; }
+.lightbox[hidden] { display: none; }
+.lightbox img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; border-radius: 4px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+.lb-close { position: fixed; top: 14px; right: 14px; width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(242, 236, 228, 0.5); background: rgba(21, 19, 17, 0.6); color: #f2ece4; font-size: 22px; line-height: 1; cursor: pointer; }
+/* Phones: cards grow to fit their content and scroll inside, with the page arrows pinned to the bottom of the card */
+@media (max-width: 760px) {
+  .overview[data-uniform] .ov-card.kiq-x, .ov-card.kiq-x { height: auto; max-height: calc(100svh - 194px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+  /* the intro scrolls inside its card too, so the text never runs under the Scroll / Switch buttons */
+  .ov-card.kiq-x.hero { overflow-y: auto; }
+  .hero .hero-media .phone, .hero .kiq-media .phone { --ph: min(36svh, 300px); }
+  /* Funk Fusion: smaller covers so the card's details fit without clipping */
+  .mags { --mh: 19vh; margin: 12px 0 34px; }
+  .ov-card.kiq-x > *, .ov-card.kiq-x > .slide-nav { flex-shrink: 0; min-width: 0; }
+  /* one column that never grows past the card: the long Back + contents row scrolls sideways instead of widening the page */
+  .ov-card.kiq-x.tr-concept, .ov-card.kiq-x.tr-ai, .ov-card.kiq-x.kiq-or, .ov-card.kiq-x.acc-pr, .kiq-or, .kiq-works, .kiq-social { grid-template-columns: minmax(0, 1fr); }
+  .card-head { min-width: 0; }
+  .card-head .slide-toc { min-width: 0; }
+  .ov-card.kiq-x > .slide-nav.on-card { position: sticky; bottom: 0; margin-top: 8px; z-index: 2; background: #ebe4d6; box-shadow: 0 -10px 20px #f4efe4; }
+  /* a solid paper band behind the arrows, edge to edge, so text never shows around them */
+  .overview[class*="tint-"] .ov-card.kiq-x > .slide-nav.on-card { width: auto; align-self: stretch; bottom: -18px; margin: 8px -18px -18px; padding: 10px 18px 14px; border: 0; border-top: 1px solid rgba(21, 19, 17, 0.16); border-radius: 0; background: #f4efe4; box-shadow: 0 -12px 16px #f4efe4; justify-content: space-between; }
+  .kiq-social:has(.kiq-events) .kiq-webinar img, .kiq-webinar img { width: 100%; height: auto; max-width: 100%; max-height: none; min-height: 0; object-fit: contain; }
+  .ov-card.kiq-x .kiq-cars .kiq-tiles { overflow-x: auto; }
+  .ov-card.kiq-x .kiq-cars .kiq-tiles img { flex: none; height: 150px; }
+  .acc-phones { --ph: min(56svh, 440px); overflow-x: auto; justify-content: flex-start; padding-bottom: 6px; }
+  .kiq-x .kiq-banners { overflow-x: auto; justify-content: flex-start; }
+  .kiq-x .kiq-banners img { flex: none; height: min(56svh, 460px); min-height: 0; }
+  .tr-strip img { height: min(56svh, 460px); }
+  .lightbox { padding: 56px 0 16px; align-items: flex-start; justify-content: flex-start; }
+  .lightbox img { max-width: none; max-height: none; height: calc(100svh - 80px); margin: 0 auto; border-radius: 0; }
+}
+
+/* ================= Simple version: no eye, a plain page that scrolls naturally ================= */
+:root { color-scheme: light; --paper: #ece5d6; --ink: #151311; --ink-2: #4d463e; --rule: rgba(21, 19, 17, 0.16); --hot: #b8402a; }
+html { scroll-snap-type: none; scroll-behavior: smooth; scroll-padding-top: 76px; }
+html, body { background: var(--paper); color: var(--ink); }
+html[data-mode="art"] { --paper: #0d0c0b; --ink: #f2ece4; --ink-2: #b3aa9d; --rule: rgba(242, 236, 228, 0.16); --hot: #f2654a; color-scheme: dark; }
+body { margin: 0; transition: background-color .3s, color .3s; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 21; background: var(--paper); }
+.s-mail { font: 500 13px/1 var(--mono); color: var(--ink-2); user-select: all; }
+
+.s-top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px max(24px, env(safe-area-inset-left, 0px)); background: color-mix(in srgb, var(--paper) 92%, transparent);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border-bottom: 1px solid var(--rule);
+}
+.s-name { font: 600 17px/1 var(--display); color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
+.s-modes { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--rule); border-radius: 999px; }
+.s-modes button { font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); background: none; border: 0; border-radius: 999px; padding: 9px 14px; cursor: pointer; }
+.s-modes button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.s-modes button:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
+
+.s-hero { max-width: 1120px; margin: 0 auto; padding: clamp(56px, 10vw, 120px) max(24px, env(safe-area-inset-right, 0px)) clamp(48px, 8vw, 96px) max(24px, env(safe-area-inset-left, 0px)); }
+.s-kicker { margin: 0 0 18px; font: 500 12px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--hot); }
+.s-hero h1 { --size: clamp(44px, 9vw, 112px); margin: 0; font: 400 var(--size)/0.95 var(--display); letter-spacing: -0.03em; }
+/* the name's font swap: the line keeps its height while the face changes */
+.s-hero h1.name { font-size: calc(var(--size) * var(--fscale, 1)); height: calc(var(--size) * 1.05); white-space: nowrap; cursor: default; }
+.s-hero h1.name.joined .ch { display: inline; transition: none; transform: none !important; }
+.s-hero h1.name.pop { animation: kpop .28s ease-out; }
+.s-hero h1.name .ch { display: inline-block; transition: transform .2s ease-out; color: color-mix(in srgb, var(--hot) calc(var(--p, 0) * 100%), var(--ink)); }
+@media (prefers-reduced-motion: reduce) { .s-hero h1.name .ch { transition: none; } }
+.s-bio { margin: 26px 0 0; max-width: 46ch; font-size: clamp(17px, 1.6vw, 20px); line-height: 1.55; color: var(--ink-2); }
+.s-links { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 26px; }
+.s-links a { font: 500 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink); text-decoration: none; padding-bottom: 4px; border-bottom: 1.5px solid var(--hot); }
+.s-projects { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 44px; padding-top: 22px; border-top: 1px solid var(--rule); }
+.s-projects a { display: inline-flex; gap: 10px; align-items: baseline; font: 500 15px/1 var(--body); color: var(--ink); text-decoration: none; padding: 10px 16px; border: 1px solid var(--rule); border-radius: 999px; }
+.s-projects a span { font: 500 10.5px/1 var(--mono); color: var(--ink-2); }
+.s-projects a:hover { border-color: var(--ink); }
+
+.s-main { max-width: 1120px; margin: 0 auto; padding-block: 0; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); }
+.s-project { padding: 0 0 clamp(72px, 10vw, 128px); }
+.s-label { margin: 0 0 18px; padding-top: 22px; border-top: 1px solid var(--rule); font: 500 11px/1.3 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+
+/* The cards sit in the page instead of floating over the 3D scene */
+.overview { position: relative; inset: auto; z-index: auto; padding: 0; opacity: 1; transform: none; pointer-events: auto; justify-content: flex-start; align-items: flex-start; }
+.overview .ov-card, .overview.is-locked .lock-card { pointer-events: auto; }
+.ov-card { max-height: none; overflow: visible; }
+.overview[data-uniform] .ov-card.kiq-x { height: auto; min-height: 0; max-height: none; }
+.overview[class*="tint-"] .ov-card { box-shadow: none; }
+.overview[data-project="funkfusion"], .overview[data-project="tarot"] { align-items: center; padding: 10px 0 40px; }
+.photo-panel { max-height: none; }
+.overview.has-slides { padding-bottom: 0; }
+.slide { justify-content: flex-start; }
+.overview.has-slides .ov-card { width: 100%; }
+.lock { position: static; padding: 0; justify-content: flex-start; }
+.overview.is-locked .slides { display: none; }
+.lock-card { width: min(460px, 100%); }
+
+.s-foot { max-width: 1120px; margin: 0 auto; padding: 40px 24px 64px; border-top: 1px solid var(--rule); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; }
+.s-foot p { margin: 0; font: 500 15px/1 var(--display); }
+.s-foot .s-links { margin: 0; }
+@media (min-width: 761px) {
+  .overview[data-project="trace"][data-uniform] .ov-card.kiq-x.hero, .overview[data-project="kinetikiq"][data-uniform] .ov-card.kiq-x.hero { width: 100%; max-height: none; min-height: 520px; }
+  .overview.has-slides .ov-card.kiq-x { width: 100%; }
+}
+@media (max-width: 760px) {
+  .s-top { flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px 16px; }
+  .s-modes button { padding: 8px 11px; font-size: 10px; }
+  .s-hero, .s-main, .s-foot { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  html { scroll-padding-top: 104px; }
+  .overview, .overview.has-slides { padding: 0; }
+  .overview[data-uniform] .ov-card.kiq-x, .ov-card.kiq-x { max-height: none; }
+  .ov-card.kiq-x.hero { overflow: visible; }
+  .overview[class*="tint-"] .ov-card.kiq-x > .slide-nav.on-card { position: static; margin: 12px -18px -18px; }
+}
+.overview.is-expanded, .overview[data-toc].is-expanded { padding-left: 0; padding-right: 0; }
+@media (min-width: 761px) { .overview[data-project="funkfusion"] .mags { margin-left: 48px; } }
+</style>
+</head>
+<body>
+
+
+<header class="s-top">
+  <a class="s-name" href="#top">Nardos Bizuneh</a>
+  <nav class="s-modes" role="tablist" aria-label="Work">
+    <button type="button" role="tab" data-to="engineer">Design Engineering</button>
+    <button type="button" role="tab" data-to="art">Art Direction</button>
+  </nav>
+</header>
+
+<section class="s-hero" id="top">
+  <p class="s-kicker" id="sKicker"></p>
+  <h1 id="sName">Nardos Bizuneh</h1>
+  <p class="s-bio">A passionate advocate for empathetic and inclusive design. With a Bachelor of Arts in Digital Multimedia Design, I bridge the gap between people and technology through user experience research and design.</p>
+  <div class="s-links" id="sLinks"></div>
+  <nav class="s-projects" id="sProjects" aria-label="Projects"></nav>
+</section>
+
+<main class="s-main">
+<div class="s-group" data-group="engineer">
+<div class="s-project" id="p-trace">
+<div class="s-label"></div>
+<section class="overview has-slides tint-purple" data-nav-on-card data-toc data-uniform data-project="trace" aria-label="Trace overview">
+  <div class="slides">
+    <div class="slide is-active" data-label="Intro">
+      <article class="ov-card kiq-x hero">
+        <div class="hero-media">
+          <div class="phone" aria-hidden="true">
+            <div class="phone-screen"><img loading="lazy" src="textures/trace-search.webp" alt=""></div>
+            <div class="phone-island"></div>
+          </div>
+        </div>
+        <h2>Trace</h2>
+        <p class="ov-status">Revamped &middot; Now a working app</p>
+        <p class="ov-lede">An app that helps you find what to watch across the many streaming options of today.</p>
+        <dl class="ov-meta">
+          <div><dt>Role</dt><dd>UX research &amp; UI design</dd></div>
+          <div><dt>Duration</dt><dd>15-week prototype, then rebuilt as an app</dd></div>
+          <div><dt>Tools</dt><dd>Figma, Claude</dd></div>
+          <div><dt>Deliverable</dt><dd>Prototype, then an installable app</dd></div>
+        </dl>
+        <div class="ov-points">
+          <section><div class="ov-label">For you</div><h3>Recommendations that adapt</h3><p>Users set their genre preferences and the platforms they subscribe to. Trace recommends content and keeps adjusting as they interact with it.</p></section>
+          <section><div class="ov-label">Search</div><h3>Find by theme or mood</h3><p>When someone knows how they want to feel but not what to watch, they can search by theme or mood instead of a title.</p></section>
+          <section><div class="ov-label">The goal</div><h3>Save time, give control</h3><p>Return the time people spend searching, so they can spend it on the entertainment itself.</p></section>
+        </div>
+        <div class="ov-actions">
+          <button class="ov-more is-solid read-case" type="button">Read case study <span aria-hidden="true">&rarr;</span></button>
+          <a class="ov-more" href="https://tracesearch.netlify.app/" target="_blank" rel="noopener">The app <span aria-hidden="true">&nearr;</span></a>
+        </div>
+      </article>
+    </div>
+    <div class="slide" data-label="Concept &amp; research" data-expanded>
+      <article class="ov-card kiq-x tr-concept">
+        <div class="tr-col">
+          <div class="ov-label">02 &middot; Concept development</div>
+          <p class="lead">Viewers have too much content and too little time, so deciding what to watch has become a task of its own.</p>
+          <p>I chose an app format because it is the most accessible way to reach people where they already choose what to watch. I explored how people use streaming services today through user research.</p>
+          <p class="tr-note">The first version was a high-fidelity prototype. I later rebuilt it as a working, installable app.</p>
+        </div>
+        <div class="tr-col">
+          <div class="ov-label">03 &middot; Research &middot; Context</div>
+          <h4>Why it matters</h4>
+          <p>Information overload, services split across many platforms, rising subscription costs, infinite-scroll design and &ldquo;media fatigue&rdquo; all make choosing harder.</p>
+          <p>Every day there are hours of new content uploaded, and it would take years to view everything being produced. 50% of TV viewers feel there are too many streaming services, and 59% of consumers say they&rsquo;re willing to cancel a subscription after watching what they wanted. Users don&rsquo;t have any control over what is available to watch, and the cost keeps rising: Netflix&rsquo;s $8 monthly subscription used to be enough, but the premium tier now costs $26.99 a month.</p>
+        </div>
+        <div class="tr-stats">
+          <div><b>44%</b><span>of streamers say they often have a hard time finding something to watch (Karrer)</span></div>
+          <div><b>59%</b><span>of consumers are willing to cancel a subscription after watching their desired content (Karrer)</span></div>
+          <div><b>$26.99</b><span>a month for Netflix&rsquo;s premium tier in 2026, up from $8 (9to5Mac)</span></div>
+        </div>
+      </article>
+    </div>
+    <div class="slide" data-label="User research" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">03 &middot; Research &middot; Survey</div><h3>User research &amp; personas</h3></div>
+        <p>I surveyed people on how they choose what to watch. Most respondents were 30&ndash;44 (65.7%), and the rest were 18&ndash;29 (34.3%).</p></header>
+        <div class="tr-stats">
+          <div><b>40%</b><span>say their biggest problem is that nothing looks interesting</span></div>
+          <div><b>40%</b><span>choose content because of popular culture (TikTok, Twitter, etc.)</span></div>
+          <div><b>40%</b><span>say streaming interfaces have too many options</span></div>
+        </div>
+        <div class="x-media tr-personas"><img loading="lazy" src="textures/trace/persona1.webp" alt="Persona: Freddie Garcia, 32, software engineer in San Jose" decoding="async"><img loading="lazy" src="textures/trace/persona2.webp" alt="Persona: Amy Jones, 24, graduate student and barista in Harrisburg" decoding="async"></div>
+      </article>
+    </div>
+    <div class="slide" data-label="User journey" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">03 &middot; Research</div><h3>User journey</h3></div>
+        <p>Freddie&rsquo;s path from scrolling Netflix with nothing to watch, to knowing Trace is reliable next time.</p></header>
+        <div class="x-media tr-chart"><img loading="lazy" src="textures/trace/journey.webp" alt="User journey map for Freddie Garcia: discovery, navigate, result and loyalty, with old pain points" decoding="async"></div>
+      </article>
+    </div>
+    <div class="slide" data-label="User flow" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">04 &middot; Structure</div><h3>User flow</h3></div>
+        <p>From opening Trace to watching something: pick for me, search by mood, or My List, and Trace learns your taste along the way.</p></header>
+        <div class="x-media tr-chart"><img loading="lazy" src="textures/trace/userflow.webp" alt="Trace user flow: Home picks, search by mood, title page, My List, and learning from ratings" decoding="async"></div>
+      </article>
+    </div>
+    <div class="slide" data-label="Sketches" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">05 &middot; Ideation</div><h3>Sketches</h3></div>
+        <p>Hand-drawn screens for log in, onboarding, search by mood, recommendations and profile.</p></header>
+        <div class="tr-strip"><img loading="lazy" src="textures/trace/sketch1.webp" alt="Sketch: login" decoding="async"><img loading="lazy" src="textures/trace/sketch2.webp" alt="Sketch: recommended" decoding="async"><img loading="lazy" src="textures/trace/sketch3.webp" alt="Sketch: rated results" decoding="async"><img loading="lazy" src="textures/trace/sketch4.webp" alt="Sketch: categories and preferences" decoding="async"><img loading="lazy" src="textures/trace/sketch5.webp" alt="Sketch: search &ldquo;movies about royal weddings&rdquo;" decoding="async"><img loading="lazy" src="textures/trace/sketch6.webp" alt="Sketch: since you liked" decoding="async"><img loading="lazy" src="textures/trace/sketch7.webp" alt="Sketch: profile and genres" decoding="async"></div>
+      </article>
+    </div>
+    <div class="slide" data-label="Wireframes" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">06 &middot; Structure</div><h3>Wireframes</h3></div>
+        <p>The sketches turned into low-fidelity wireframes, ready for the high-fidelity prototype.</p></header>
+        <div class="tr-strip"><img loading="lazy" src="textures/trace/wire1.webp" alt="Wireframe: log in" decoding="async"><img loading="lazy" src="textures/trace/wire2.webp" alt="Wireframe: categories and preferences" decoding="async"><img loading="lazy" src="textures/trace/wire3.webp" alt="Wireframe: home with match score" decoding="async"><img loading="lazy" src="textures/trace/wire4.webp" alt="Wireframe: since you liked" decoding="async"><img loading="lazy" src="textures/trace/wire5.webp" alt="Wireframe: search results" decoding="async"><img loading="lazy" src="textures/trace/wire6.webp" alt="Wireframe: recommended" decoding="async"></div>
+      </article>
+    </div>
+    <div class="slide" data-label="Building the app" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">07 &middot; Build</div><h3>From wireframes to a working app</h3></div>
+        <p>I took mood search from wireframes to an installable phone app. You describe how you feel, and Trace recommends real films and shows you can watch on your services.</p></header>
+        <div class="tr-stats">
+          <div><b>15+</b><span>published versions, each reviewed on my phone and refined, usually within a day</span></div>
+          <div><b>53</b><span>moods, from &ldquo;cozy&rdquo; to &ldquo;midnight urban pursuit&rdquo;, drawn from words people used in the survey</span></div>
+          <div><b>10</b><span>feature rounds, from a real catalog to saved lists and personal picks</span></div>
+        </div>
+        <ol class="tr-steps">
+          <li><b>Clickable prototype</b><span>A sample of 56 titles so every screen and state (loading, empty, errors) could be judged before live data.</span></li>
+          <li><b>Real catalog</b><span>TMDB data for every movie and show, with posters, ratings, runtimes and US streaming availability.</span></li>
+          <li><b>Audit</b><span>A usability and accessibility review midway, used to set priorities.</span></li>
+          <li><b>Phone app</b><span>An installable web app with an icon, full-screen launch and offline support.</span></li>
+          <li><b>Personal picks</b><span>Saved lists, watched tracking, ratings and a Pick for me home.</span></li>
+        </ol>
+        <p class="tr-meta"><b>Role</b> Product designer and director of the build &middot; <b>Built with</b> Claude, TMDB, Supabase &middot; <b>Platform</b> Installable web app for iPhone and Android</p>
+      </article>
+    </div>
+    <div class="slide" data-label="Key features" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">08 &middot; Features</div><h3>Key features &amp; why</h3></div>
+        <p>Every feature answers a problem from the research: too many options, and recommendations that don&rsquo;t explain themselves.</p></header>
+        <div class="tr-features">
+          <section><h4>Mood search</h4><p>Type a feeling in your own words. Trace shows what it understood as removable chips, then 8 picks with match scores, because people think in moods, not genres.</p></section>
+          <section><h4>Strict service filter</h4><p>Only titles on the services you pick, with brand-colored tags. Recommending something you can&rsquo;t watch was the top frustration.</p></section>
+          <section><h4>Live suggestions</h4><p>Typing &ldquo;tear&rdquo; suggests &ldquo;tear-jerker&rdquo;, helping people find the right words and catching title searches early.</p></section>
+          <section><h4>Pick for me</h4><p>One top pick, three more and a &ldquo;Try something different&rdquo; pick, each with a reason. No typing, and no taste bubble.</p></section>
+          <section><h4>Honest matching</h4><p>Scores are capped so &ldquo;Strong match&rdquo; stays meaningful, and anything below 70% is labeled a best guess.</p></section>
+          <section><h4>My List</h4><p>Want to watch and Watched lists, filtered by films or shows, because saving is the natural end of a good search.</p></section>
+        </div>
+        <p class="tr-note">Two decisions changed through use: a full-screen rating pop-up became a small bar that fades on its own, and accounts were built, then switched off, because signing in before seeing any value worked against the promise of fewer steps.</p>
+      </article>
+    </div>
+    <div class="slide" data-label="AI &amp; outcome" data-expanded>
+      <article class="ov-card kiq-x tr-ai">
+        <div class="tr-col">
+          <div class="ov-label">09 &middot; Working with AI</div>
+          <p class="lead">I set the direction and made the design calls. Claude wrote and tested the code.</p>
+          <p>I owned the goals, features, interaction and visual decisions, the mood vocabulary and what to cut. I briefed Claude the way I&rsquo;d brief a developer, in plain language with examples, and made the final call on every result.</p>
+          <p>Every release was checked by automated phone-size browser tests, screenshots and my own use: scripted journeys, regression runs, mood accuracy searches and accessibility basics like clear labels and announced changes.</p>
+        </div>
+        <div class="tr-col">
+          <div class="ov-label">Outcome</div>
+          <p class="lead">A working, installable app that turns a feeling into a short list you can watch tonight.</p>
+          <p>It costs almost nothing to run, because mood matching happens on the device and the data sources are free.</p>
+          <div class="ov-label">Next</div>
+          <ul class="tr-next">
+            <li>Usability test the finished flows with survey participants</li>
+            <li>Turn accounts back on so lists follow people across devices</li>
+            <li>Add a reviews page, the last step from the original user flow</li>
+            <li>Bring &ldquo;Because you liked&hellip;&rdquo; reasons back to search cards</li>
+          </ul>
+        </div>
+      </article>
+    </div>
+  </div>
+  <nav class="slide-nav" aria-label="Trace slides">
+    <button class="slide-prev" aria-label="Previous slide">&larr;</button>
+    <div class="slide-dots"></div>
+    <span class="slide-count"></span>
+    <button class="slide-next" aria-label="Next slide">&rarr;</button>
+  </nav>
+</section>
+</div>
+<div class="s-project" id="p-kinetikiq">
+<div class="s-label"></div>
+<section class="overview has-slides tint-blue is-locked" data-nav-on-card data-toc data-uniform data-project="kinetikiq" aria-label="KinetikIQ overview">
+  <div class="lock">
+    <form class="ov-card lock-card" aria-label="Password required">
+      <div class="ov-label">Protected case study</div>
+      <h2>KinetikIQ</h2>
+      <p class="ov-body">This project is password protected. Enter the password to view it.</p>
+      <div class="lock-row">
+        <input type="password" name="pw" placeholder="Password" autocomplete="off" aria-label="Password" required>
+        <button class="ov-more is-solid" type="submit">Unlock</button>
+      </div>
+      <p class="lock-err" role="alert" hidden>That password isn&rsquo;t right. Try again.</p>
+    </form>
+  </div>
+  <div class="slides">
+    <div class="slide is-active" data-label="Intro">
+      <article class="ov-card kiq-x hero">
+        <div class="kiq-media">
+          <img class="poster p1" loading="lazy" src="textures/kiq/poster.webp" alt="KinetikIQ poster: Intelligence layer for human movement">
+          <img class="poster p2" loading="lazy" src="textures/kiq/social.webp" alt="Soccer Science Conference 2025 social post with the KinetikIQ logo">
+          <div class="phone" aria-hidden="true">
+            <div class="phone-screen"><img loading="lazy" src="textures/kiq/app.webp" alt=""></div>
+            <div class="phone-island"></div>
+          </div>
+        </div>
+        <h2>KinetikIQ</h2>
+        <p class="ov-lede">A motion-capture analysis app that gives athletes, patients and the teams around them instant analytics to capture movement, quantify performance and track change over time.</p>
+        <p class="ov-body">As the sole designer, I worked with the commercial and development teams to design the product UI and UX, commercial materials and social content, building on the existing KinetikIQ brand.</p>
+        <dl class="ov-meta">
+          <div><dt>Role</dt><dd>Sole product &amp; brand designer</dd></div>
+          <div><dt>Timeline</dt><dd>Jan 2025 &ndash; Oct 2026</dd></div>
+          <div><dt>Tools</dt><dd>Figma, Canva</dd></div>
+          <div><dt>Deliverables</dt><dd>Brand, UI, commercial, social</dd></div>
+        </dl>
+        <div class="ov-actions"><button class="ov-more is-solid read-case" type="button">Read case study <span aria-hidden="true">&rarr;</span></button></div>
+      </article>
+    </div>
+    <div class="slide" data-label="Overview &amp; result" data-expanded>
+      <article class="ov-card kiq-x kiq-or">
+        <div class="kiq-or-main">
+          <div class="ov-label">01 &middot; Overview</div>
+          <p class="lead">As the only designer, I shaped KinetikIQ&rsquo;s design from end to end, from product UI and UX to commercial and social materials, working closely with the commercial and development teams.</p>
+          <div class="kiq-cols">
+            <div><div class="ov-label">The problem</div><h4>No structure, no polish</h4>
+            <p>There was no structure or consistency. The product didn&rsquo;t look modern or polished, and it wasn&rsquo;t inviting.</p></div>
+            <div><div class="ov-label">The approach</div><h4>One direction, less clinical</h4>
+            <p>I tied together the app&rsquo;s core need and the visual direction it required, then began polishing its look. The goal was a cleaner, less medical feel across every design.</p></div>
+          </div>
+        </div>
+        <div class="kiq-or-quote">
+          <div class="ov-label">The result</div>
+          <blockquote>&ldquo;I have been using KinetikIQ for several months now, and what I appreciate most is the ability to measure and objectively assess movement. The markerless analysis is fast, simple, and the results appear immediately on the iPad. Whether in the clinic or out on the field, I can assess the quality of movement of my patients and athletes within seconds. With athletes undergoing post-ACL rehabilitation, or during strength and conditioning work, the tool has helped me better support my decisions and make the follow-up process much more tangible for them.&rdquo;
+          <cite>Florian Escarpit &middot; Sports Physiotherapist, ESCA Physio (France)</cite></blockquote>
+        </div>
+      </article>
+    </div>
+    <div class="slide" data-label="Reports &amp; Home" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">02 &middot; Key product work</div><h3>Reports &amp; Home</h3></div>
+        <p>Four redesigns that changed how clients use the product.</p></header>
+        <div class="kiq-works">
+        <section class="kiq-work">
+          <div class="ba-media">
+            <figure><img loading="lazy" src="textures/kiq/rep-before.webp" alt="Old KinetikIQ report: a dense table of angles and velocities" decoding="async"><figcaption>Before</figcaption></figure>
+            <figure><img loading="lazy" src="textures/kiq/rep-after.webp" alt="New KinetikIQ session report with summary metrics" decoding="async"><figcaption>After</figcaption></figure>
+          </div>
+          <div><h4>Reports</h4><p>Clients needed results they could act on. The old report was a dense table of angles and velocities. I designed new Quick Session and Longitudinal reports for both athletes and groups, so performance coaches and clinicians can see exactly what changed, track progress over time and explain it to their athletes and patients. The redesign is currently in development.</p></div>
+        </section>
+        <section class="kiq-work">
+          <div class="ba-media">
+            <figure><img loading="lazy" src="textures/kiq/home-before.webp" alt="Old KinetikIQ home screen with a flat body map" decoding="async"><figcaption>Before</figcaption></figure>
+            <figure><img loading="lazy" src="textures/kiq/home-after.webp" alt="New KinetikIQ home screen with a 3D body map and bottom navigation" decoding="async"><figcaption>After</figcaption></figure>
+          </div>
+          <div><h4>Home</h4><p>The old home screen felt flat and made it hard to move around the app. I kept the interactive body map but made it more inviting, refreshed the cards, and added a bottom navigation bar so every section of the app is one tap away.</p></div>
+        </section>
+        </div>
+      </article>
+    </div>
+    <div class="slide" data-label="Exercise &amp; Capture" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">02 &middot; Key product work</div><h3>Exercise selection &amp; Capture</h3></div>
+        <p>Four redesigns that changed how clients use the product.</p></header>
+        <div class="kiq-works">
+        <section class="kiq-work">
+          <div class="ba-media">
+            <figure><img loading="lazy" src="textures/kiq/ex-before.webp" alt="Old exercise list" decoding="async"><figcaption>Before</figcaption></figure>
+            <figure><img loading="lazy" src="textures/kiq/ex-after.webp" alt="New exercise list with module tabs" decoding="async"><figcaption>After</figcaption></figure>
+          </div>
+          <div><h4>Exercise selection</h4><p>Users had to keep going back to the start to switch between modules. I added module tabs directly on the exercise list, so they can move between Mobility, Dynamic, Postural and Jumps without leaving the page.</p></div>
+        </section>
+        <section class="kiq-work">
+          <div class="ba-media">
+            <figure><img loading="lazy" src="textures/kiq/cap-before.webp" alt="Old capture screen" decoding="async"><figcaption>Before</figcaption></figure>
+            <figure><img loading="lazy" src="textures/kiq/cap-after.webp" alt="New capture screen with athlete and exercise on separate lines" decoding="async"><figcaption>After</figcaption></figure>
+          </div>
+          <div><h4>Capture screen</h4><p>I modernized the capture screen and gave the athlete and the exercise their own lines, so it&rsquo;s clear who is being recorded and what they&rsquo;re doing. I also added a &lsquo;View protocol&rsquo; button, which makes it obvious that the protocol instructions can be opened right from the recording view.</p></div>
+        </section>
+        </div>
+      </article>
+    </div>
+    <div class="slide" data-label="Concept" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">03 &middot; Concept</div><h3>Where I&rsquo;d take it next</h3></div>
+        <p>A simpler flow built around one question at a time: who you&rsquo;re assessing and which exercise, with the camera always one tap away and dedicated Athletes, Playlists and Assessments tabs.</p></header>
+        <div class="kiq-next">
+          <figure><img loading="lazy" src="textures/kiq/next-home.webp" alt="Concept screen: Home: choose who you&rsquo;re assessing, then an exercise or playlist" decoding="async"><figcaption>Home</figcaption></figure>
+          <figure><img loading="lazy" src="textures/kiq/next-exercise.webp" alt="Concept screen: Exercise picker with search, body-part filters and module tabs" decoding="async"><figcaption>Exercise picker</figcaption></figure>
+          <figure><img loading="lazy" src="textures/kiq/next-playlist.webp" alt="Concept screen: Playlist picker" decoding="async"><figcaption>Playlist picker</figcaption></figure>
+          <figure><img loading="lazy" src="textures/kiq/next-athletes.webp" alt="Concept screen: Athletes list with groups" decoding="async"><figcaption>Athletes</figcaption></figure>
+          <figure><img loading="lazy" src="textures/kiq/next-new-athlete.webp" alt="Concept screen: New athlete form with groups and a hide-face option" decoding="async"><figcaption>New athlete</figcaption></figure>
+          <figure><img loading="lazy" src="textures/kiq/next-playlists.webp" alt="Concept screen: Playlists with edit and start buttons" decoding="async"><figcaption>Playlists</figcaption></figure>
+          <figure><img loading="lazy" src="textures/kiq/next-assessments.webp" alt="Concept screen: Assessments list with a result preview and a link to the dashboard" decoding="async"><figcaption>Assessments</figcaption></figure>
+        </div>
+      </article>
+    </div>
+    <div class="slide" data-label="Conference banners" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">04 &middot; Commercial highlights</div><h3>Conference banners</h3></div>
+        <p>I also led KinetikIQ&rsquo;s commercial design, including conference banners, posters and social campaigns.</p></header>
+        <div class="kiq-banners">
+          <img loading="lazy" src="textures/kiq/banner1.webp" alt="Banner: Measure movement. Anywhere, anytime." decoding="async">
+          <img loading="lazy" src="textures/kiq/banner2.webp" alt="Banner: Intelligence layer for human movement" decoding="async">
+          <img loading="lazy" src="textures/kiq/banner3.webp" alt="Banner: Movement insights made simple" decoding="async">
+          <img loading="lazy" src="textures/kiq/banner4.webp" alt="Banner: Movement data for better care" decoding="async">
+        </div>
+      </article>
+    </div>
+    <div class="slide" data-label="Posters" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">04 &middot; Commercial highlights</div><h3>Posters</h3></div>
+        <p>Two &ldquo;Measure movement. Anywhere, anytime.&rdquo; posters: one in the gym, one on the pitch.</p></header>
+        <div class="kiq-banners kiq-posters">
+          <img loading="lazy" src="textures/kiq/poster-a.webp" alt="Poster: Measure movement. Anywhere, anytime. An athlete lunging in front of the app on a tablet" decoding="async">
+          <img loading="lazy" src="textures/kiq/poster-b.webp" alt="Poster: Measure movement. Anywhere, anytime. Accuracy, ease of access, speed, with the app on a phone and tablet" decoding="async">
+        </div>
+      </article>
+    </div>
+    <div class="slide" data-label="Social media" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">05 &middot; Social media</div><h3>Webinar, carousels &amp; event posts</h3></div>
+        <p>A webinar announcement, two Instagram carousels and posts announcing KinetikIQ at three conferences.</p></header>
+        <div class="kiq-social">
+          <figure class="kiq-webinar"><img loading="lazy" src="textures/kiq/webinar.webp" alt="Webinar post: Screening and rehab in the NFL with Sam O'Leary, L.A. Chargers" decoding="async"><figcaption>Webinar</figcaption></figure>
+          <div class="kiq-cars">
+            <figure><figcaption>Carousel 1 &middot; The cost of an injury</figcaption>
+              <div class="kiq-tiles"><img loading="lazy" src="textures/kiq/c1-1.webp" alt="The cost of an injury" decoding="async"><img loading="lazy" src="textures/kiq/c1-2.webp" alt="Common injuries on a body map" decoding="async"><img loading="lazy" src="textures/kiq/c1-3.webp" alt="Economic cost" decoding="async"><img loading="lazy" src="textures/kiq/c1-4.webp" alt="Indirect cost" decoding="async"><img loading="lazy" src="textures/kiq/c1-5.webp" alt="Physical cost" decoding="async"></div></figure>
+            <figure><figcaption>Carousel 2 &middot; Fatigue isn&rsquo;t just being tired</figcaption>
+              <div class="kiq-tiles"><img loading="lazy" src="textures/kiq/c2-1.webp" alt="Fatigue isn't just being tired" decoding="async"><img loading="lazy" src="textures/kiq/c2-2.webp" alt="The body is breaking down" decoding="async"><img loading="lazy" src="textures/kiq/c2-3.webp" alt="The brain is exhausted too" decoding="async"><img loading="lazy" src="textures/kiq/c2-4.webp" alt="She's just not playing like herself" decoding="async"><img loading="lazy" src="textures/kiq/c2-5.webp" alt="Are you tracking the full picture?" decoding="async"><img loading="lazy" src="textures/kiq/c2-6.webp" alt="See what the eye test misses" decoding="async"></div></figure>
+            <figure><figcaption>Event posts &middot; Conferences</figcaption>
+              <div class="kiq-tiles kiq-events"><img loading="lazy" src="textures/kiq/event1.webp" alt="Exhibitor, National Conference, Kansas City, July 16 to 19, booth 1005" decoding="async"><img loading="lazy" src="textures/kiq/event2.webp" alt="Soccer Science Conference 2025, August 27 and 28, St. George's Park" decoding="async"><img loading="lazy" src="textures/kiq/event3.webp" alt="Sportsmith x KinetikIQ Speed Training Conference 2026, Etihad Stadium, Manchester" decoding="async"></div></figure>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+  <nav class="slide-nav" aria-label="KinetikIQ slides">
+    <button class="slide-prev" aria-label="Previous slide">&larr;</button>
+    <div class="slide-dots"></div>
+    <span class="slide-count"></span>
+    <button class="slide-next" aria-label="Next slide">&rarr;</button>
+  </nav>
+</section>
+</div>
+<div class="s-project" id="p-accessify">
+<div class="s-label"></div>
+<section class="overview has-slides tint-teal" data-nav-on-card data-toc data-project="accessify" aria-label="Accessify overview">
+  <div class="slides">
+    <div class="slide is-active" data-label="Intro">
+      <article class="ov-card acc-card">
+        <div class="acc-head">
+          <h2>Accessify</h2>
+          <p class="ov-status">UX research</p>
+          <p class="ov-lede">A one-stop shop for people with disabilities looking to explore their immediate surroundings.</p>
+        </div>
+        <dl class="ov-meta">
+          <div><dt>What I made</dt><dd>Competitive analysis, information architecture, user flow, wireframes</dd></div>
+        </dl>
+        <div class="ov-actions"><button class="ov-more is-solid read-case" type="button">Read case study <span aria-hidden="true">&rarr;</span></button></div>
+      </article>
+    </div>
+    <div class="slide" data-label="Problem &amp; research" data-expanded>
+      <article class="ov-card kiq-x acc-pr">
+        <div class="acc-ps">
+          <section><div class="ov-label">01 &middot; Problem</div><h3>Finding out too late</h3><p>Many people with disabilities aren&rsquo;t given proper accommodations when they travel or visit services. People go to parks, concerts and more, only to realize after buying a ticket or spending a lot of time that the place doesn&rsquo;t have the accessibility services they need.</p></section>
+          <section><div class="ov-label">01 &middot; Solution</div><h3>Accessibility info, up front</h3><p>A mobile app that delivers accessibility information to people with special needs searching for accessible services in their local area. Users can contribute to the app and take advantage of accommodations by highlighting accessible services in public and commercial settings.</p></section>
+        </div>
+        <div class="acc-research">
+          <div class="ov-label">01 &middot; Research</div>
+          <h3>42.5 million Americans live with a disability</h3>
+          <blockquote>&ldquo;Overall, there are about 42.5 million Americans with disabilities, making up 13% of the civilian noninstitutionalized population, according to U.S. Census Bureau data from 2021. This group includes people with hearing, vision, cognitive, walking, self-care or independent living difficulties.&rdquo;<cite>Pew Research Center</cite></blockquote>
+          <p>People who need accessibility services often don&rsquo;t know whether they&rsquo;ll be welcome in their local area. Often it&rsquo;s only after they&rsquo;ve traveled to a destination that they find out it doesn&rsquo;t have the accessibility services they need. That led us to research all the ways services fall short on sharing accessibility information. Before approaching the designs and the app&rsquo;s content, we researched how available or scarce these services are on other platforms, and how to build inclusion in.</p>
+        </div>
+      </article>
+    </div>
+    <div class="slide" data-label="Competitive analysis" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">02 &middot; Research</div><h3>Competitive analysis</h3></div></header>
+        <div class="x-media"><img loading="lazy" src="textures/acc/competitive.webp" alt="Competitive analysis of accessibility apps" decoding="async"></div>
+      </article>
+    </div>
+    <div class="slide" data-label="Information hierarchy" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">03 &middot; Structure</div><h3>Information hierarchy</h3></div></header>
+        <div class="x-media"><img loading="lazy" src="textures/acc/hierarchy.webp" alt="Information hierarchy for the Accessify app" decoding="async"></div>
+      </article>
+    </div>
+    <div class="slide" data-label="Personas" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">04 &middot; Users</div><h3>Personas</h3></div></header>
+        <div class="x-media"><img loading="lazy" src="textures/acc/persona1.webp" alt="Persona: Martin, 25, software developer in Trenton, NJ" decoding="async"><img loading="lazy" src="textures/acc/persona2.webp" alt="Persona: Julia, 31, product manager in Philadelphia, PA" decoding="async"></div>
+      </article>
+    </div>
+    <div class="slide" data-label="User flow" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">05 &middot; Flow</div><h3>User flow</h3></div></header>
+        <div class="x-media"><img loading="lazy" src="textures/acc/userflow.webp" alt="Accessify user flow diagram" decoding="async"></div>
+      </article>
+    </div>
+    <div class="slide" data-label="Mockups: onboarding" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">06 &middot; Design</div><h3>Mockups: onboarding &amp; account</h3></div>
+        <p>Welcome, log in and sign up, and the profile with accessibility settings like speech to text and app language.</p></header>
+        <div class="acc-phones">
+          <figure><div class="phone"><div class="phone-screen"><img loading="lazy" src="textures/acc/screen01.webp" alt="Accessify screen: Welcome" decoding="async"></div><div class="phone-island"></div></div><figcaption>Welcome</figcaption></figure>
+          <figure><div class="phone"><div class="phone-screen"><img loading="lazy" src="textures/acc/screen02.webp" alt="Accessify screen: Log in or sign up" decoding="async"></div><div class="phone-island"></div></div><figcaption>Log in or sign up</figcaption></figure>
+          <figure><div class="phone"><div class="phone-screen"><img loading="lazy" src="textures/acc/screen03.webp" alt="Accessify screen: Finding places" decoding="async"></div><div class="phone-island"></div></div><figcaption>Finding places</figcaption></figure>
+          <figure><div class="phone"><div class="phone-screen"><img loading="lazy" src="textures/acc/screen04.webp" alt="Accessify screen: Welcome back" decoding="async"></div><div class="phone-island"></div></div><figcaption>Welcome back</figcaption></figure>
+          <figure><div class="phone"><div class="phone-screen"><img loading="lazy" src="textures/acc/screen05.webp" alt="Accessify screen: Create account" decoding="async"></div><div class="phone-island"></div></div><figcaption>Create account</figcaption></figure>
+          <figure><div class="phone"><div class="phone-screen"><img loading="lazy" src="textures/acc/screen06.webp" alt="Accessify screen: Profile & settings" decoding="async"></div><div class="phone-island"></div></div><figcaption>Profile & settings</figcaption></figure>
+        </div>
+      </article>
+    </div>
+    <div class="slide" data-label="Mockups: explore &amp; add" data-expanded>
+      <article class="ov-card kiq-x">
+        <header class="kiq-head"><div><div class="ov-label">07 &middot; Design</div><h3>Mockups: explore &amp; add a place</h3></div>
+        <p>Finding places on the map, saving favorites, and adding accessibility information to a location.</p></header>
+        <div class="acc-phones">
+          <figure><div class="phone"><div class="phone-screen"><img loading="lazy" src="textures/acc/screen07.webp" alt="Accessify screen: Explore map" decoding="async"></div><div class="phone-island"></div></div><figcaption>Explore map</figcaption></figure>
+          <figure><div class="phone"><div class="phone-screen"><img loading="lazy" src="textures/acc/screen08.webp" alt="Accessify screen: Favorites" decoding="async"></div><div class="phone-island"></div></div><figcaption>Favorites</figcaption></figure>
+          <figure><div class="phone"><div class="phone-screen"><img loading="lazy" src="textures/acc/screen09.webp" alt="Accessify screen: Add a place" decoding="async"></div><div class="phone-island"></div></div><figcaption>Add a place</figcaption></figure>
+          <figure><div class="phone"><div class="phone-screen"><img loading="lazy" src="textures/acc/screen10.webp" alt="Accessify screen: Search" decoding="async"></div><div class="phone-island"></div></div><figcaption>Search</figcaption></figure>
+          <figure><div class="phone"><div class="phone-screen"><img loading="lazy" src="textures/acc/screen11.webp" alt="Accessify screen: Search results" decoding="async"></div><div class="phone-island"></div></div><figcaption>Search results</figcaption></figure>
+          <figure><div class="phone"><div class="phone-screen"><img loading="lazy" src="textures/acc/screen12.webp" alt="Accessify screen: Accessibility details" decoding="async"></div><div class="phone-island"></div></div><figcaption>Accessibility details</figcaption></figure>
+        </div>
+      </article>
+    </div>
+  </div>
+  <nav class="slide-nav" aria-label="Accessify slides">
+    <button class="slide-prev" aria-label="Previous slide">&larr;</button>
+    <div class="slide-dots"></div>
+    <span class="slide-count"></span>
+    <button class="slide-next" aria-label="Next slide">&rarr;</button>
+  </nav>
+</section>
+</div>
+</div>
+<div class="s-group" data-group="art" hidden>
+<div class="s-project" id="p-photography">
+<div class="s-label"></div>
+<section class="overview" data-project="photography" aria-label="Photography">
+  <article class="photo-panel">
+    <div class="photo-head">
+      <h2>Photography</h2>
+      <p>Portraits, street, documentary, nature and real estate.</p>
+    </div>
+    <a class="photo-site" href="https://nardosphoto.vercel.app" target="_blank" rel="noopener">
+      <img loading="lazy" src="textures/photos/site.webp" alt="Nardos Bizuneh photography portfolio: a wall of polaroids of portraits, street scenes, protests and flowers" decoding="async">
+    </a>
+    <div class="ov-actions"><a class="ov-more is-solid" href="https://nardosphoto.vercel.app" target="_blank" rel="noopener">View photo portfolio <span aria-hidden="true">&nearr;</span></a></div>
+  </article>
+</section>
+</div>
+<div class="s-project" id="p-funkfusion">
+<div class="s-label"></div>
+<section class="overview" data-project="funkfusion" aria-label="Funk Fusion overview">
+  <div class="mags" id="mags">
+    <button class="mag" data-pos="0" aria-label="Orange cover"><img loading="lazy" src="textures/ff-cover-1.webp" alt="Funk Fusion Issue 01, orange variant cover"></button>
+    <button class="mag" data-pos="1" aria-label="Pink cover"><img loading="lazy" src="textures/ff-cover-2.webp" alt="Funk Fusion Issue 01, pink variant cover"></button>
+    <button class="mag" data-pos="2" aria-label="Teal cover"><img loading="lazy" src="textures/ff-cover-3.webp" alt="Funk Fusion Issue 01, teal variant cover"></button>
+    <div class="mags-hint">Click a cover to bring it forward</div>
+  </div>
+  <article class="ov-card">
+    <h2>Funk Fusion</h2>
+    <p class="ov-lede">A magazine about the strange, the mystical and the mind.</p>
+    <dl class="ov-meta">
+      <div><dt>Role</dt><dd>Concept &amp; art direction</dd></div>
+      <div><dt>Format</dt><dd>Print magazine, A4</dd></div>
+      <div><dt>Issue</dt><dd>01, October 2026</dd></div>
+      <div><dt>Status</dt><dd>Interior spread in progress</dd></div>
+    </dl>
+    <div class="ov-points">
+      <section><div class="ov-label">The covers</div><h3>One eye, three colorways</h3><p>The same mosaic eye artwork printed in orange, pink and teal, with a glitched masthead across the top.</p></section>
+      <section><div class="ov-label">The thread</div><h3>The eye everywhere</h3><p>The eye on the cover is the same motif that runs through the collages and digital art, and through this site.</p></section>
+    </div>
+  </article>
+</section>
+</div>
+<div class="s-project" id="p-tarot">
+<div class="s-label"></div>
+<section class="overview" data-project="tarot" aria-label="Tarot Deck overview">
+  <div class="deck">
+    <img loading="lazy" src="textures/tarot/back.webp" alt="Card back" style="--d:-3">
+    <img loading="lazy" src="textures/tarot/0.webp" alt="0, The Fool" style="--d:-2">
+    <img loading="lazy" src="textures/tarot/1.webp" alt="I, The Magician" style="--d:-1">
+    <img loading="lazy" src="textures/tarot/2.webp" alt="II, The High Priestess" style="--d:0">
+    <img loading="lazy" src="textures/tarot/3.webp" alt="III, The Empress" style="--d:1">
+    <img loading="lazy" src="textures/tarot/4.webp" alt="IV, The Emperor" style="--d:2">
+    <img loading="lazy" src="textures/tarot/5.webp" alt="V, The Hierophant" style="--d:3">
+  </div>
+  <article class="ov-card tarot-info">
+    <h2>Tarot Deck</h2>
+    <p class="ov-lede">The Major Arcana rebuilt as collage.</p>
+    <dl class="ov-meta">
+      <div><dt>Role</dt><dd>Concept, art direction &amp; collage</dd></div>
+      <div><dt>Cards</dt><dd>The Fool to The Hierophant</dd></div>
+      <div><dt>Status</dt><dd>In progress</dd></div>
+      <div><dt>Next</dt><dd>An interactive web reading</dd></div>
+    </dl>
+  </article>
+</section>
+</div>
+<div class="s-project" id="p-digitalart">
+<div class="s-label"></div>
+<section class="overview" data-project="digitalart" aria-label="Digital Art">
+  <article class="photo-panel">
+    <div class="photo-head">
+      <h2>Digital Art</h2>
+      <p>Collage, glitch and op-art experiments.</p>
+    </div>
+    <div class="photo-grid">
+      <div class="photo-row">
+        <div style="--a:1.333"><img loading="lazy" src="textures/digital/d1.webp" alt="Valentine collage of candy hearts, cherries and red cowboy boots" decoding="async"></div>
+        <div style="--a:1.230"><img loading="lazy" src="textures/digital/d2.webp" alt="Op-art collage of faces, hands and a moon drawn in fingerprint lines" decoding="async"></div>
+        <div style="--a:0.784"><img loading="lazy" src="textures/digital/d3.webp" alt="Psychedelic collage with a striped sunburst, mushrooms and eyes" decoding="async"></div>
+      </div>
+      <div class="photo-row">
+        <div style="--a:0.971"><img loading="lazy" src="textures/digital/d4.webp" alt="Glitched storm collage with lightning and a gold sun" decoding="async"></div>
+        <div style="--a:1.286"><img loading="lazy" src="textures/digital/d5.webp" alt="Neon collage of two red eyes over swirling green and blue" decoding="async"></div>
+      </div>
+    </div>
+  </article>
+</section>
+</div>
+</div>
+</main>
+
+<footer class="s-foot">
+  <p>Nardos Bizuneh <span class="s-mail">nardosbizu@gmail.com</span></p>
+  <div class="s-links" id="sFootLinks"></div>
+</footer>
+
+<script type="module" src="simple.js"></script>
+
+</body>
+</html>
